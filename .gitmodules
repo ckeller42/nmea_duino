@@ -1,0 +1,9 @@
+[submodule "libraries/TinyGPSPlus"]
+	path = libraries/TinyGPSPlus
+	url = https://github.com/mikalhart/TinyGPSPlus.git
+[submodule "arduino-cmake"]
+	path = arduino-cmake
+	url = https://github.com/queezythegreat/arduino-cmake.git
+[submodule "libraries/HC05"]
+	path = libraries/HC05
+	url = https://github.com/jdunmire/HC05.git
