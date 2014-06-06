@@ -30,14 +30,20 @@
 /*-------------------------------------------------------------------------
  *  Make sure you are connected to the correct pins
  *-------------------------------------------------------------------------*/
-SoftwareSerial btNmeaSerial(6, 7); // RX, TX
-SoftwareSerial nmeaSerial(10,12); // RX, TX
+SoftwareSerial btNmeaSerial(10,11); // RX, TX
+SoftwareSerial nmeaSerial(8,9); // RX, TX
 
 
-int debug=1;
-bool haveFilname = 0;
 
-TinyGPSPlus gps;
+
+char fname[12]; // filname for writing to sd
+char foldername[10]; // foldername for writing to sd
+bool haveFilname = false; // has the filname been set?
+
+
+
+
+TinyGPSPlus gps; // nmea parser
 
 
 void setup()  
@@ -51,9 +57,6 @@ void setup()
   btNmeaSerial.begin(9600);
   nmeaSerial.begin(4800); // seen:
 }
-
-
-
 
 
 
@@ -73,67 +76,40 @@ void Forward()
     incomingByte = THEINPUTSERIAL.read();
     btNmeaSerial.write(incomingByte);
     Serial.write(incomingByte);
+    //Serial.print(".");
   }
 }
-
-
-bool haveDate = false;
-bool haveTime = false;
-
-void displayInfo()
-{
-
-  Serial.print(F("  Date/Time: "));
-  if (gps.date.isValid())
-  {
-    Serial.print(gps.date.month());
-    Serial.print(F("/"));
-    Serial.print(gps.date.day());
-    Serial.print(F("/"));
-    Serial.print(gps.date.year());
-    haveDate = true;
-    
-  }
-  else
-  {
-    Serial.print(F("INVALID"));
-  }
-
-  Serial.print(F(" "));
-  if (gps.time.isValid())
-  {
-    if (gps.time.hour() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.hour());
-    Serial.print(F(":"));
-    if (gps.time.minute() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.minute());
-    Serial.print(F(":"));
-    if (gps.time.second() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.second());
-    Serial.print(F("."));
-    if (gps.time.centisecond() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.centisecond());
-    haveTime = true;
-    
-  }
-  else
-  {
-    Serial.print(F("INVALID"));
-  }
-  
-  haveFilname = haveTime && haveDate;
-  
-  Serial.println();
-}
-
-
 
 
 /*======================================================================*/
 /*! 
- *   
+ *   Get a folder and filname
  */
 /*======================================================================*/
+void getFilename()
+{
+
+  if (gps.date.isValid() && gps.time.isValid())
+  {
+    snprintf(foldername,sizeof(foldername),
+             "%04d%02d%02d",
+             gps.date.year(),
+             gps.date.month(),
+             gps.date.day());
+    
+    snprintf(fname, sizeof(fname),
+             "%02d%02d%02d.txt",
+             gps.time.hour(),
+             gps.time.minute(),
+             gps.time.second());
+    
+    haveFilname = true;
+    Serial.println(fname);    
+    Serial.println(foldername);    
+  }
+}
+
+
 
 
 /*======================================================================*/
@@ -144,19 +120,14 @@ void displayInfo()
 void loop() // run over and over
 {
 
-  if ( haveFilname == false)
+  
+  while (THEINPUTSERIAL.available() >0 && haveFilname == false)
   {
-    while (THEINPUTSERIAL.available() >0)
-    {
-      if (gps.encode(THEINPUTSERIAL.read()))
-      {
-        displayInfo();
-        haveFilname =true;
-        break;
-      }
-    }
+    if (gps.encode(THEINPUTSERIAL.read()))
+    { getFilename(); }
   }
-  else
+  
+  if ( haveFilname == true)
   {
     // directly send all the data via bluetooth
     Forward();
