@@ -15,11 +15,17 @@
 **
 **
 **************************************************************************/
+
 #include <Arduino.h>
 #include <SoftwareSerial.h>
+#include <SD.h>
+
 
 //#include <HC05.h>
 #include "TinyGPS++.h"
+
+const int chipSelect = 4;
+
 
 /*-------------------------------------------------------------------------
  *  Change this for debugging
@@ -30,8 +36,8 @@
 /*-------------------------------------------------------------------------
  *  Make sure you are connected to the correct pins
  *-------------------------------------------------------------------------*/
-SoftwareSerial btNmeaSerial(10,11); // RX, TX
-SoftwareSerial nmeaSerial(8,9); // RX, TX
+SoftwareSerial btNmeaSerial(8,9); // RX, TX
+SoftwareSerial nmeaSerial(10,666); // RX, TX
 
 
 
@@ -39,8 +45,11 @@ SoftwareSerial nmeaSerial(8,9); // RX, TX
 char fname[12]; // filname for writing to sd
 char foldername[10]; // foldername for writing to sd
 bool haveFilname = false; // has the filname been set?
+char fullfname[256];
+bool SDOk=false;
 
 
+File dataFile;
 
 
 TinyGPSPlus gps; // nmea parser
@@ -56,6 +65,25 @@ void setup()
   // set the data rate for the SoftwareSerial port
   btNmeaSerial.begin(9600);
   nmeaSerial.begin(4800); // seen:
+  if (not nmeaSerial.isListening())
+  {
+    Serial.println("# NMEA is not listening!!!!");
+  }
+
+  pinMode(10, OUTPUT);
+  
+  // see if the card is present and can be initialized:
+  if (!SD.begin(chipSelect)) 
+  {
+    Serial.println("Card failed, or not present");
+    // don't do anything more:
+    SDOk = false;
+  }
+  else
+  {
+    SDOk = true;
+    Serial.println("card initialized.");
+  }
 }
 
 
@@ -75,8 +103,12 @@ void Forward()
   {
     incomingByte = THEINPUTSERIAL.read();
     btNmeaSerial.write(incomingByte);
-    Serial.write(incomingByte);
+    //Serial.write(incomingByte);
     //Serial.print(".");
+    if (SDOk &&  dataFile.available())
+    {
+      dataFile.write(incomingByte);
+    }
   }
 }
 
@@ -106,6 +138,29 @@ void getFilename()
     haveFilname = true;
     Serial.println(fname);    
     Serial.println(foldername);    
+
+    snprintf(fullfname, sizeof(fullfname),
+             "%s/%s",
+             foldername,fname);
+    
+
+    if (SDOk)
+    {
+      if ( not SD.mkdir(foldername))
+      {
+        Serial.println("Error creating dir!");
+      }
+      else
+      {
+        
+        dataFile = SD.open(fullfname,FILE_WRITE);
+        //dataFile = SD.open(fname);
+        if (not dataFile)
+        {
+          Serial.println("Error opening file!");
+        }
+      }
+    }
   }
 }
 
@@ -132,5 +187,10 @@ void loop() // run over and over
     // directly send all the data via bluetooth
     Forward();
   }
+  if (SDOk && dataFile)
+  {
+    dataFile.flush();
+  }
+  
 }
 
