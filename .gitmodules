@@ -1,6 +1,6 @@
 [submodule "libraries/TinyGPSPlus"]
 	path = libraries/TinyGPSPlus
-	url = git@github.com:mikalhart/TinyGPSPlus.git
+	url = https://github.com/mikalhart/TinyGPSPlus.git
 [submodule "arduino-cmake"]
 	path = arduino-cmake
 	url = https://github.com/queezythegreat/arduino-cmake.git

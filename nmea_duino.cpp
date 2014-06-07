@@ -1,30 +1,27 @@
-// -*- mode: c++ -*-
 /**************************************************************************
-**       Title: 
-**    $RCSfile: abbrev_defs,v $
-**   $Revision: 1.1 $$Name:  $
-**       $Date: 2008/05/26 15:44:44 $
-**   Copyright: $Author: ckeller $
-** Description:
-**
-**    
-**
-**-------------------------------------------------------------------------
-**
-**  $Log: abbrev_defs,v $
-**
-**
-**************************************************************************/
-
+ **       Title: 
+ **    $RCSfile: abbrev_defs,v $
+ **   $Revision: 1.1 $$Name:  $
+ **       $Date: 2008/05/26 15:44:44 $
+ **   Copyright: $Author: ckeller $
+ ** Description:
+ **
+ **    
+ **
+ **-------------------------------------------------------------------------
+ **
+ **  $Log: abbrev_defs,v $
+ **
+ **
+ **************************************************************************/
 #include <Arduino.h>
 #include <SoftwareSerial.h>
 #include <SD.h>
 
-
 //#include <HC05.h>
 #include "TinyGPS++.h"
 
-const int chipSelect = 4;
+
 
 
 /*-------------------------------------------------------------------------
@@ -36,23 +33,28 @@ const int chipSelect = 4;
 /*-------------------------------------------------------------------------
  *  Make sure you are connected to the correct pins
  *-------------------------------------------------------------------------*/
-SoftwareSerial btNmeaSerial(8,9); // RX, TX
-SoftwareSerial nmeaSerial(10,666); // RX, TX
+SoftwareSerial g_BtNmeaSerial(2,3); // RX, TX
+SoftwareSerial g_NmeaSerial(4,5); // RX, TX
+
+/*-------------------------------------------------------------------------
+ * File handling
+ *-------------------------------------------------------------------------*/
+const int g_chipSelect = 4;
+TinyGPSPlus g_Gps; // nmea parser
+
+char g_fname[12]; // filname for writing to sd
+char g_foldername[10]; // g_foldername for writing to sd
+bool g_haveFilename = false; // has the filname been set?
+char g_full_filename[256];
+
+
+bool g_SDOk=false; // SD is 
+int g_counter_flush; //counter to wait for flush
+const int g_max_to_flush = 1000; // then we flush the file
+File g_DataFile; //file handle
 
 
 
-
-char fname[12]; // filname for writing to sd
-char foldername[10]; // foldername for writing to sd
-bool haveFilname = false; // has the filname been set?
-char fullfname[256];
-bool SDOk=false;
-
-
-File dataFile;
-
-
-TinyGPSPlus gps; // nmea parser
 
 
 void setup()  
@@ -63,31 +65,56 @@ void setup()
   Serial.println("# DEBUGING NMEA_Duino");
 
   // set the data rate for the SoftwareSerial port
-  btNmeaSerial.begin(9600);
-  nmeaSerial.begin(4800); // seen:
-  if (not nmeaSerial.isListening())
-  {
-    Serial.println("# NMEA is not listening!!!!");
-  }
+  g_BtNmeaSerial.begin(9600);
+
+  g_NmeaSerial.begin(4800); // seen:
+
+  if (not g_NmeaSerial.isListening())
+    {
+      Serial.println("# NMEA is not listening! :-(");
+    }
+
+  // setup sdcard
+  g_counter_flush = 0;
 
   pinMode(10, OUTPUT);
   
   // see if the card is present and can be initialized:
-  if (!SD.begin(chipSelect)) 
-  {
-    Serial.println("Card failed, or not present");
-    // don't do anything more:
-    SDOk = false;
-  }
+  if (!SD.begin(g_chipSelect)) 
+    {
+      Serial.println("Card failed, or not present! :-(");
+      // don't do anything more:
+      g_SDOk = false;
+    }
   else
-  {
-    SDOk = true;
-    Serial.println("card initialized.");
-  }
+    {
+      g_SDOk = true;
+      Serial.println("card initialized. :-)");
+    }
 }
 
-
-
+/*======================================================================*/
+/*! 
+ *  Write a byte to the file. Flush if the byte counter reaches max
+ */
+/*======================================================================*/
+void storeByteToSd(int incomingByte)
+{
+  if (g_SDOk && g_DataFile.available())
+    {
+      g_DataFile.write(incomingByte);
+      ++g_counter_flush;
+      if (g_counter_flush > g_max_to_flush)
+	{
+	  g_DataFile.flush();
+	  g_counter_flush = 0;
+	}
+    }
+  else
+    {
+      //	Serial.println("Can not save to file! :-(");
+    }
+}
 
 /*======================================================================*/
 /*! 
@@ -100,18 +127,14 @@ void Forward()
   int incomingByte = 0;	// for incoming serial data
   
   if (THEINPUTSERIAL.available())
-  {
-    incomingByte = THEINPUTSERIAL.read();
-    btNmeaSerial.write(incomingByte);
-    //Serial.write(incomingByte);
-    //Serial.print(".");
-    if (SDOk &&  dataFile.available())
     {
-      dataFile.write(incomingByte);
+      incomingByte = THEINPUTSERIAL.read();
+      g_BtNmeaSerial.write(incomingByte);
+      //Serial.write(incomingByte);
+      //Serial.print(".");
+      storeByteToSd(incomingByte);
     }
-  }
 }
-
 
 /*======================================================================*/
 /*! 
@@ -121,47 +144,56 @@ void Forward()
 void getFilename()
 {
 
-  if (gps.date.isValid() && gps.time.isValid())
-  {
-    snprintf(foldername,sizeof(foldername),
-             "%04d%02d%02d",
-             gps.date.year(),
-             gps.date.month(),
-             gps.date.day());
-    
-    snprintf(fname, sizeof(fname),
-             "%02d%02d%02d.txt",
-             gps.time.hour(),
-             gps.time.minute(),
-             gps.time.second());
-    
-    haveFilname = true;
-    Serial.println(fname);    
-    Serial.println(foldername);    
-
-    snprintf(fullfname, sizeof(fullfname),
-             "%s/%s",
-             foldername,fname);
-    
-
-    if (SDOk)
+  if (g_Gps.date.isValid() && g_Gps.time.isValid())
     {
-      if ( not SD.mkdir(foldername))
-      {
-        Serial.println("Error creating dir!");
-      }
-      else
-      {
-        
-        dataFile = SD.open(fullfname,FILE_WRITE);
-        //dataFile = SD.open(fname);
-        if (not dataFile)
-        {
-          Serial.println("Error opening file!");
-        }
-      }
+      snprintf(g_foldername,sizeof(g_foldername),
+	       "%04d%02d%02d",
+	       g_Gps.date.year(),
+	       g_Gps.date.month(),
+	       g_Gps.date.day());
+    
+      snprintf(g_fname, sizeof(g_fname),
+	       "%02d%02d%02d.txt",
+	       g_Gps.time.hour(),
+	       g_Gps.time.minute(),
+	       g_Gps.time.second());
+    
+      g_haveFilename = true;
+      Serial.println(g_fname);    
+      Serial.println(g_foldername);    
+      
+      snprintf(g_full_filename, sizeof(g_full_filename),
+	       "%s/%s",
+	       g_foldername,g_fname);
+      Serial.println(g_full_filename);    
+    
     }
-  }
+}
+
+/*======================================================================*/
+/*! 
+ *   Create folder with current date and open file with current time
+ */
+/*======================================================================*/
+void doFileAndFolder()
+{
+  if (not g_SDOk)
+    {
+      Serial.println("SD not ready not folder and file :-(");
+      return;
+    }
+  if ( not SD.mkdir(g_foldername) )
+    {
+      Serial.println("Error creating dir! :-( ");
+      return;
+    }
+  
+  g_DataFile = SD.open(g_full_filename,FILE_WRITE);
+  //g_DataFile = SD.open(g_fname);
+  if (not g_DataFile)
+    {
+      Serial.println("Error opening file! :-( ");
+    }
 }
 
 
@@ -175,22 +207,33 @@ void getFilename()
 void loop() // run over and over
 {
 
-  
-  while (THEINPUTSERIAL.available() >0 && haveFilname == false)
-  {
-    if (gps.encode(THEINPUTSERIAL.read()))
-    { getFilename(); }
-  }
-  
-  if ( haveFilname == true)
-  {
-    // directly send all the data via bluetooth
-    Forward();
-  }
-  if (SDOk && dataFile)
-  {
-    dataFile.flush();
-  }
+  // get enough data to generate a filename
+  while (g_haveFilename == false &&THEINPUTSERIAL.available() >0 )
+    {
+      if (g_Gps.encode(THEINPUTSERIAL.read()))
+	{
+	  getFilename(); 
+	}
+    }
+
+  // hurry we have a filename. open the file
+  if ( g_haveFilename == true && not g_DataFile)
+    {
+      doFileAndFolder();
+    }
+      
+
+  if ( g_haveFilename == true)
+    {
+      // directly send all the data via bluetooth
+      Forward();
+    }
+  if (g_SDOk && g_DataFile)
+    {
+      // fluhing is handled by a counter
+      //g_DataFile.flush();
+    }
   
 }
 
+// -*- mode: c++ -*-
