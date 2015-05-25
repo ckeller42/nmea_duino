@@ -7,3 +7,6 @@
 [submodule "libraries/HC05"]
 	path = libraries/HC05
 	url = https://github.com/jdunmire/HC05.git
+[submodule "Arduino-Makefile"]
+	path = Arduino-Makefile
+	url = https://github.com/sudar/Arduino-Makefile.git
